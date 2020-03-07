@@ -1,0 +1,17 @@
+glwlib/src
+glwlib
+glwlib/inc
+.
+Main
+GLWLib/src
+GLWLib/inc
+GLWLib
+Main/src
+GLWLib/src/CMakeFiles
+GLWLib/src/CMakeFiles/GLWLib.dir
+Main/CMakeFiles
+Main/src/CMakeFiles
+Main/src/CMakeFiles/Main.dir
+GLWLib/CMakeFiles
+shaders
+textures
