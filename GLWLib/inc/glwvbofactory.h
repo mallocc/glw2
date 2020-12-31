@@ -57,6 +57,7 @@ namespace glw
 
         static void nullUVs(GLWVec2Array& uv, int n);
         static void polarUVs(GLWVec2Array& uv, GLWVec3Array& v);
+        static void circleUVs(GLWVec2Array& uv, GLWVec3Array& v);
         static void sphereicalUVs(GLWVec2Array& uv, GLWVec3Array& v);
         static void rectUVs(GLWVec2Array& uv, GLWVec3Array& v);
         static void squareMeshUVs(GLWVec2Array& uv, int w, int h);
@@ -93,6 +94,9 @@ namespace glw
 
         static void glwCenteredRectangle(GLWVertexArray& o,
                                          const glm::vec3 colour  = glw::BLACK);
+
+        static void glwCircle(GLWVertexArray& o,
+                                 const glm::vec3 colour  = glw::BLACK);
 
 
         //Returns random float

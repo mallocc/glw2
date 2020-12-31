@@ -14,9 +14,6 @@ namespace glw
   {
     namespace buffers
     {
-      #define NULL_GLWVBO_ID 0U
-      typedef GLuint GLWVBOId;
-
       class GLWVBOManager
       {
       public:

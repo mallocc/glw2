@@ -56,6 +56,9 @@ GLWLib/src/glwshadervariablehandle.cpp
 GLWLib/src/glwtexturemanager.cpp
 GLWLib/src/glwvbo.cpp
 GLWLib/src/glwvbofactory.cpp
+Main/inc/entitymanager.h
+Main/inc/lock.h
+Main/src/entitymanager.cpp
 textures/stars.jpg
 textures/question_mark.png
 textures/mars.jpg

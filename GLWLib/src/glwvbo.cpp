@@ -156,3 +156,8 @@ glm::mat4 GLWVBO::getModelMat()
 }
 
 void GLWVBO::setTexId(GLuint tex) { m_tex = tex; }
+
+void GLWVBO::setPosVec2(glm::vec2& pos)
+{
+  m_pos = glm::vec3(pos,0);
+}

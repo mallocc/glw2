@@ -7,7 +7,8 @@ namespace glw
   {
     GLW_SUCCESS,
     GLW_FAIL,
-    GLW_INVALID
+    GLW_INVALID,
+    GLW_DATA_FULL
   };
 }
 

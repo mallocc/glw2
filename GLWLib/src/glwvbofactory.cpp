@@ -493,6 +493,14 @@ void GLWVBOFactory::polarUVs(GLWVec2Array& uv, GLWVec3Array& v)
   }
 }
 
+void GLWVBOFactory::circleUVs(GLWVec2Array& uv, GLWVec3Array& v)
+{
+  for (int i = 0; i < v.size(); i++)
+  {
+    uv.push_back(glm::vec2(v[i].x, v[i].y));
+  }
+}
+
 void GLWVBOFactory::sphereicalUVs(GLWVec2Array& uv, GLWVec3Array& v)
 {
   glm::vec2 previous;
@@ -814,6 +822,26 @@ void GLWVBOFactory::glwCenteredRectangle(GLWVertexArray& o,
   centeredSquareMesh(v, 1, 1);
 
   squareMeshUVs(uv, 1, 1);
+
+  normals(n, v);
+  tangents(t, v);
+
+  colourBuffer(c, colour, v.size());
+
+  packObject(o, v, c, n, t, uv);
+}
+
+void GLWVBOFactory::glwCircle(GLWVertexArray& o,
+                         const glm::vec3 colour)
+{
+  o.clear();
+
+  GLWVec3Array v, c, n, t;
+  GLWVec2Array uv;
+
+  circle(v, 12);
+
+  circleUVs(uv, v);
 
   normals(n, v);
   tangents(t, v);

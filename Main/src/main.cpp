@@ -1,3 +1,4 @@
+#include "entitymanager.h"
 #include "glwcolor.h"
 #include "glwfbo.h"
 #include "glwfbomanager.h"
@@ -5,13 +6,20 @@
 #include "glwvbo.h"
 #include "glwvbofactory.h"
 #include "glwvbomanager.h"
+#include "guidrawutilities.h"
+#include "guimanager.h"
 #include "logger.h"
 #include "stringformat.h"
+#include <chrono>
+#include <math.h>
 #include <mutex>
 #include <stdio.h>
 
 LDEFINECLASS("MAIN", "main")
 
+using ent::Entity;
+using ent::EntityManager;
+using glw::GLW_DATA_FULL;
 using glw::GLW_FAIL;
 using glw::GLW_SUCCESS;
 using glw::GLWManager;
@@ -33,8 +41,7 @@ using glw::engine::buffers::GLWVertexArray;
 using glw::engine::glsl::GLWShaderProgramManager;
 using glw::util::Logger;
 using glw::util::StringFormat;
-
-typedef std::lock_guard<std::mutex> Lock;
+using gui::GUIManager;
 
 namespace
 {
@@ -46,160 +53,48 @@ namespace
                    glm::vec3(),         // Velocity
                    glm::vec3(0, 0, -1), // Direction
                    glm::vec3(0, 1, 0)); // Up Vector
+
+  float dt       = 0.1f;
+  float friction = 0.9f;
+
+  glm::vec2 g_windowSize = glm::vec2(1280, 720);
+  GUIManager g_guiManager(glm::vec3(g_windowSize, 0));
+  GLWShaderProgramManager* g_shaderProgramManager;
+  GLWVBOManager* g_vboManager;
+  GLWVBOId GUI_RECTANGLE_VBO_ID;
 } // namespace
 
-class DynamicParticle
+void gui::drawRectangle(
+    glm::vec3 translation,
+    glm::vec3 scale,
+    gui::Color color,
+    float opacity,
+    std::string blendMode,
+    unsigned int glTextureId)
 {
-public:
-  glm::vec3 m_pos, m_vel;
-
-  DynamicParticle()
-      : m_pos(),
-        m_vel() {}
-
-  DynamicParticle(glm::vec3 pos, glm::vec3 vel)
-      : m_pos(pos),
-        m_vel(vel) {}
-
-  void update(float dt)
+  if (g_vboManager != nullptr)
   {
-    m_pos += m_vel * dt;
-  }
-
-  void force(glm::vec3 acc, float dt)
-  {
-    m_vel += acc * dt;
-  }
-};
-
-#define DEFAULT_MAX_ENTITIES 100U
-#define NULL_ENTITY_ID 0U
-typedef uint32_t EntityId;
-
-class Entity : public DynamicParticle
-{
-public:
-  Entity()
-      : DynamicParticle(),
-        m_id(NULL_ENTITY_ID),
-        m_vbo(NULL_GLWVBO_ID) {}
-
-  Entity(glm::vec3 pos, glm::vec3 vel)
-      : DynamicParticle(pos, vel),
-        m_id(NULL_ENTITY_ID),
-        m_vbo(NULL_GLWVBO_ID) {}
-
-  EntityId getId()
-  {
-    return m_id;
-  }
-
-  void setId(EntityId id)
-  {
-    m_id = id;
-  }
-
-  GLWVBOId getVBO()
-  {
-    return m_vbo;
-  }
-
-private:
-  EntityId m_id;
-  GLWVBOId m_vbo;
-};
-
-class EntityManager
-{
-public:
-  EntityManager()
-      : m_entites(),
-        m_maxEntities(DEFAULT_MAX_ENTITIES) {}
-
-  GLWReturnCode addEntity(Entity* entity)
-  {
-    GLWReturnCode success = GLW_FAIL;
-
-    Lock lock(m_mutex);
-
-    if (m_entites.size() < DEFAULT_MAX_ENTITIES)
+    GLWVBO* guiRectangleVBO = g_vboManager->getVBO(GUI_RECTANGLE_VBO_ID);
+    if (guiRectangleVBO != nullptr)
     {
-      if (NULL != entity)
+      guiRectangleVBO->m_pos = translation;
+      guiRectangleVBO->m_scale = scale;   
+      guiRectangleVBO->m_tex = glTextureId;   
+      if (g_shaderProgramManager != nullptr)
       {
-        EntityId id = getNextFreeId();
-        if (NULL_ENTITY_ID != id)
-        {
-          entity->setId(id);
-          m_entites[id] = entity;
-          success       = GLW_SUCCESS;
-          LINFO(StringFormat("Successfully added Entity - Id: %0").arg(id).str());
-        }
-        else
-        {
-          LERROR("Failed to add entity - unable to get next free Id");
-        }
-      }
-      else
-      {
-        LERROR("Failed to add entity - entity is NULL");
+        g_shaderProgramManager->drawVBO(guiRectangleVBO);
       }
     }
-    else
-    {
-      LERROR("Failed to add entity - reached max entites");
-    }
-    return success;
   }
-
-  GLWReturnCode removeEntity(EntityId id)
-  {
-    GLWReturnCode success = GLW_FAIL;
-
-    Lock lock(m_mutex);
-
-    std::map<EntityId, Entity*>::iterator found = m_entites.find(id);
-    if (found != m_entities.end())
-    {
-      delete found->second;
-      m_entities.erase(found);
-      success = GLW_SUCCESS;
-    }
-    else
-    {
-      LERROR(StringFormat("Could not remove Entity with Id: %0").arg(id).str());
-    }
-  }
-
-private:
-  std::map<EntityId, Entity*> m_entites;
-
-  uint32_t m_maxEntities;
-
-  EntityId getNextFreeId()
-  {
-    EntityId id = 1U;
-    for (auto const& entity : m_entites)
-    {
-      if (entity.first != id)
-      {
-        break;
-      }
-      ++id;
-    }
-    return id;
-  }
-
-  std::mutex m_mutex;
-};
+}
 
 GLWReturnCode loop(GLWContext& context,
                    GLWShaderProgramManager& shaderProgramManager,
                    GLWVBOManager& vboManager,
                    GLWFBOManager& fboManager)
 {
-
   // Update context camera
-  camera.update(0.1f, 0.9f);
+  camera.update(dt, friction);
   context.setCamera(camera);
 
   // Set clear colour for context
@@ -217,9 +112,92 @@ GLWReturnCode loop(GLWContext& context,
   {
     mouseBoxVbo->m_pos = glm::vec3(GLWManager::getInstance().getMouse().getMousePosition(), 0);
     shaderProgramManager.drawVBO(mouseBoxVbo);
+
+    EntityManager::getInstance().draw(shaderProgramManager, vboManager);
   }
 
+  g_guiManager.draw();
+
   return GLW_SUCCESS;
+}
+
+void entityLoop(ent::EntityMap& entities, float dt)
+{
+  glm::vec2 bounds(GLWManager::getInstance().getContext().getWindowSize());
+
+  for (ent::EntityMapPair const& pair : entities)
+  {
+    Entity* e = pair.second;
+    if (NULL != e)
+    {
+      glm::vec2 fmodded(fmod(e->m_pos.x, bounds.x), fmod(e->m_pos.y, bounds.y));
+      if (fmodded.x < 0.0f)
+      {
+        fmodded.x += bounds.x;
+      }
+      if (fmodded.y < 0.0f)
+      {
+        fmodded.y += bounds.y;
+      }
+      e->m_pos = fmodded;
+    }
+  }
+
+  //  glm::vec2 center(GLWManager::getInstance().getContext().getWindowSize() / 2.0f);
+  glm::vec2 center(GLWManager::getInstance().getMouse().getMousePosition());
+
+  float mass = 1000;
+
+  for (ent::EntityMapPair const& pair : entities)
+  {
+    Entity* e = pair.second;
+    if (NULL != e)
+    {
+      glm::vec2 dir = center - e->m_pos;
+      float d       = glm::length(dir) + 1.0f;
+      dir           = glm::normalize(dir);
+      glm::vec2 acc = mass * dir / (d * d);
+      e->force(acc, dt);
+
+      e->m_vel *= 0.99f;
+
+      for (ent::EntityMapPair const& pair2 : entities)
+      {
+        if (pair2.first != pair.first)
+        {
+          Entity* e2 = pair2.second;
+
+          if (NULL != e2)
+          {
+            dir = e2->m_pos - e->m_pos;
+            d   = glm::length(dir) + 1.0f;
+            dir = glm::normalize(dir);
+            acc = 1.0f * dir / (d * d);
+            e->force(acc, dt);
+          }
+        }
+      }
+    }
+  }
+}
+
+void inputThread()
+{
+  glm::vec2 windowSize = GLWManager::getInstance().getContext().getWindowSize();
+  glm::vec2 center     = windowSize / 2.0f;
+
+  while (true)
+  {
+    if (GLWManager::getInstance().getMouse().isLeftButtonDown())
+    {
+      EntityManager::getInstance()
+          .addEntity(new Entity(
+              glm::vec2(GLWVBOFactory::pg_randf() * windowSize.x, GLWVBOFactory::pg_randf() * windowSize.y),
+              glm::vec2(),
+              mouseBox));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
 }
 
 GLWReturnCode init(GLWContext& context,
@@ -230,7 +208,7 @@ GLWReturnCode init(GLWContext& context,
   GLWReturnCode success = GLW_SUCCESS;
 
   // Set window size
-  context.setWindowSize(glm::vec2(1280, 720));
+  context.setWindowSize(g_windowSize);
 
   LINFO("Initialising GLSL shader programs...");
 
@@ -276,33 +254,53 @@ GLWReturnCode init(GLWContext& context,
 
     LINFO("Generating Sphere...");
 
+    //    GLWVBOFactory::glwCenteredRectangle(o, glw::RED);
     GLWVBOFactory::glwCenteredRectangle(o, glw::RED);
 
     // Create a new VBO with our new vertex array
     if (!vboManager
              .addVBO(new GLWVBO(
-                         o,                   // Supply the vertex array
-                         glm::vec3(),         // World position
-                         glm::vec3(0, 1, 0),  // Rotation axis
-                         glm::radians(0.0f),  // Rotation angle
-                         glm::vec3(1, 0, 0),  // Pre-rotation axis
-                         glm::radians(0.0f),  // Pre-rotation angle
-                         glm::vec3(10, 10, 0) // Scale vector
+                         o,                  // Supply the vertex array
+                         glm::vec3(),        // World position
+                         glm::vec3(0, 1, 0), // Rotation axis
+                         glm::radians(0.0f), // Rotation angle
+                         glm::vec3(1, 0, 0), // Pre-rotation axis
+                         glm::radians(0.0f), // Pre-rotation angle
+                         glm::vec3(3, 3, 0)  // Scale vector
                          ),
                      mouseBox))
     {
       success = GLW_FAIL;
       LERROR("Failed to add GLWVBO to GLWVBOManager");
     }
+
+    LINFO("Generating GUI Rectangle...");
+
+    GLWVBOFactory::glwCenteredRectangle(o, glw::GREEN);
+
+    if (!vboManager
+             .addVBO(new GLWVBO(
+                         o,                  // Supply the vertex array
+                         glm::vec3(),        // World position
+                         glm::vec3(0, 1, 0), // Rotation axis
+                         glm::radians(0.0f), // Rotation angle
+                         glm::vec3(1, 0, 0), // Pre-rotation axis
+                         glm::radians(0.0f), // Pre-rotation angle
+                         glm::vec3(1, 1, 0)  // Scale vector
+                         ),
+                     GUI_RECTANGLE_VBO_ID))
+    {
+      success = GLW_FAIL;
+      LERROR("Failed to add GLWVBO to GLWVBOManager");
+    }
   }
 
-  EntityManager manager;
+  EntityManager::getInstance().setExternalLoop(entityLoop);
 
-  if (GLW_FAIL == manager.addEntity(new Entity()))
-  {
-    success = GLW_FAIL;
-  }
+  std::thread(inputThread).detach();
 
+  g_shaderProgramManager = &shaderProgramManager;
+  g_vboManager           = &vboManager;
 
   return success;
 }
